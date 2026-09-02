@@ -12,7 +12,7 @@
    * Підключення: Налаштування → Розширення → додати URL цього файлу.
    */
 
-  var VERSION = '1.2.0';
+  var VERSION = '1.3.0';
 
   var PORT = 8091;
   var found = '';
@@ -58,9 +58,15 @@
     add(storage('hdd_bridge', ''));
     add(found);
     add('http://127.0.0.1:' + PORT);
-    var host = scriptHost();
-    if (host && host !== 'localhost' && host !== '127.0.0.1') add('http://' + host + ':' + PORT);
-    if (location.hostname) add('http://' + location.hostname + ':' + PORT);
+
+    // Хости, де мосту бути не може: плагін віддається з CDN, а сторінка — з
+    // сайту збірки. Питати їх — це три зайві таймаути перед відповіддю.
+    var public_ = /(jsdelivr|githubusercontent|github\.io|unpkg|kinohub|lampa)/i;
+    [scriptHost(), location.hostname].forEach(function (host) {
+      if (host && !public_.test(host) && host !== 'localhost' && host !== '127.0.0.1') {
+        add('http://' + host + ':' + PORT);
+      }
+    });
     return list;
   }
 
@@ -79,7 +85,7 @@
           done = true;
           reject(new Error('таймаут'));
         }
-      }, 4000);
+      }, 2500);
 
       fetch(withToken(base + '/health'))
         .then(function (r) {
@@ -105,17 +111,28 @@
     if (found) return Promise.resolve(found);
 
     var list = candidates();
-    var chain = Promise.reject(new Error('порожньо'));
-    list.forEach(function (base) {
-      chain = chain.catch(function () {
-        return ping(base);
-      });
-    });
 
-    return chain.then(function (base) {
-      found = base;
-      console.log('[hdd] міст знайдено:', base);
-      return base;
+    return new Promise(function (resolve, reject) {
+      var left = list.length;
+      if (!left) return reject(new Error('немає кандидатів'));
+      var settled = false;
+
+      list.forEach(function (base) {
+        ping(base).then(
+          function () {
+            if (settled) return;
+            settled = true;
+            found = base;
+            console.log('[hdd] міст знайдено:', base);
+            resolve(base);
+          },
+          function () {
+            if (!settled && --left === 0) {
+              reject(new Error('міст не відповів: ' + list.join(', ')));
+            }
+          }
+        );
+      });
     });
   }
 
@@ -323,7 +340,7 @@
       param: { name: 'hdd_bridge', type: 'input', values: '', default: '' },
       field: {
         name: 'Адреса мосту',
-        description: 'Порожньо — шукати автоматично серед: ' + candidates().join(', ')
+        description: 'Порожньо — шукати автоматично: ' + candidates().join(', ')
       }
     });
 

@@ -1,6 +1,6 @@
 {
   "name": "lampa-hdd-bridge",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Міст між плагіном «Зберегти на HDD» для Lampa і Transmission",
   "main": "bridge/server.js",
   "bin": { "lampa-hdd-bridge": "bridge/server.js" },
