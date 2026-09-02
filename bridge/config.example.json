@@ -1,0 +1,18 @@
+{
+  "port": 8091,
+  "transmissionRpc": "http://127.0.0.1:9091/transmission/rpc",
+  "downloadDir": "/Volumes/HDD/Торенти/Готові",
+  "library": {
+    "movie": "/Volumes/HDD/Медіатека/Фільми",
+    "series": "/Volumes/HDD/Медіатека/Серіали"
+  },
+  "jackett": {
+    "url": "http://127.0.0.1:9117",
+    "apiKey": "ВАШ_JACKETT_API_KEY"
+  },
+  "jellyfin": {
+    "url": "http://127.0.0.1:8096",
+    "apiKey": ""
+  },
+  "pollSeconds": 60
+}

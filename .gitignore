@@ -1,0 +1,12 @@
+# конфіг із ключами й локальними шляхами
+bridge/config.json
+bridge/state.json
+
+# те, що качається install.sh
+torrserver/
+jackett/
+web/
+logs/
+
+# розвідка перед проєктуванням, у репозиторії не потрібна
+_analysis/
