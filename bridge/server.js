@@ -15,8 +15,14 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = __dirname;
-const CFG = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
-const STATE_FILE = path.join(ROOT, 'state.json');
+const CFG_FILE = process.env.LAMPA_BRIDGE_CONFIG || path.join(ROOT, 'config.json');
+const CFG = JSON.parse(fs.readFileSync(CFG_FILE, 'utf8'));
+const STATE_FILE = CFG.stateFile || path.join(ROOT, 'state.json');
+
+// У Docker зручніше задавати ключі змінними оточення, ніж правити файл.
+if (process.env.LAMPA_TOKEN) CFG.token = process.env.LAMPA_TOKEN;
+if (process.env.JACKETT_API_KEY) CFG.jackett.apiKey = process.env.JACKETT_API_KEY;
+if (process.env.JELLYFIN_API_KEY) CFG.jellyfin.apiKey = process.env.JELLYFIN_API_KEY;
 
 let sessionId = '';
 let state = {};
@@ -232,10 +238,26 @@ function readBody(req) {
   });
 }
 
+/**
+ * Міст доступний з будь-якої сторінки (CORS «*» потрібен, бо Lampa відкрита на
+ * чужому домені). Тому без ключа будь-який сайт у браузері власника міг би
+ * підкинути торент у його Transmission. Ключ вимикає цю можливість.
+ */
+function authorized(req, url) {
+  if (!CFG.token) return true;
+  const given = req.headers['x-lampa-token'] || url.searchParams.get('token') || '';
+  return given === CFG.token;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
   if (req.method === 'OPTIONS') return send(res, 204, {});
+
+  if (!authorized(req, url)) {
+    log('відмова без ключа:', url.pathname);
+    return send(res, 401, { ok: false, error: 'потрібен ключ доступу (token)' });
+  }
 
   try {
     if (url.pathname === '/health') {
@@ -271,8 +293,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(CFG.port, () => {
-  log('lampa-bridge слухає :' + CFG.port, '→ Transmission', CFG.transmissionRpc);
+server.listen(CFG.port, CFG.bind || '0.0.0.0', () => {
+  log('lampa-bridge слухає ' + (CFG.bind || '0.0.0.0') + ':' + CFG.port,
+      '→ Transmission', CFG.transmissionRpc);
+  if (!CFG.token) {
+    log('УВАГА: ключ не заданий — міст приймає команди від кого завгодно.',
+        'Впишіть "token" у', CFG_FILE, 'і в Налаштуваннях Lampa.');
+  }
 });
 
 setInterval(() => {

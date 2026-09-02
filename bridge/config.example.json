@@ -1,5 +1,7 @@
 {
   "port": 8091,
+  "bind": "0.0.0.0",
+  "token": "ВСТАВТЕ_ВИПАДКОВИЙ_РЯДОК (openssl rand -hex 16)",
   "transmissionRpc": "http://127.0.0.1:9091/transmission/rpc",
   "downloadDir": "/Volumes/HDD/Торенти/Готові",
   "library": {

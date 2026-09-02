@@ -1,0 +1,83 @@
+# lampa-hdd — увесь серверний бік однією командою:
+#
+#   cp .env.example .env && $EDITOR .env
+#   docker compose up -d
+#
+# Далі: Jackett на :9117 — додати трекери й скопіювати API Key у .env,
+# потім `docker compose up -d bridge` щоб міст його підхопив.
+
+services:
+  bridge:
+    build: .
+    image: lampa-hdd-bridge
+    container_name: lampa-bridge
+    restart: unless-stopped
+    ports:
+      - "${BRIDGE_PORT:-8091}:8091"
+    environment:
+      # Ключ обовʼязковий: без нього будь-яка сторінка у вашому браузері
+      # зможе підкидати торенти в Transmission.
+      LAMPA_TOKEN: "${LAMPA_TOKEN:?вкажіть LAMPA_TOKEN у .env}"
+      TRANSMISSION_RPC: "http://transmission:9091/transmission/rpc"
+      JACKETT_URL: "http://jackett:9117"
+      JACKETT_API_KEY: "${JACKETT_API_KEY:-}"
+      JELLYFIN_URL: "${JELLYFIN_URL:-}"
+      JELLYFIN_API_KEY: "${JELLYFIN_API_KEY:-}"
+      # Шляхи ТАКІ САМІ, як бачить їх Transmission — міст лише передає їх у RPC.
+      DOWNLOAD_DIR: "/downloads"
+      MOVIES_DIR: "/media/Movies"
+      SERIES_DIR: "/media/Series"
+    volumes:
+      - bridge-config:/config
+    depends_on:
+      - transmission
+      - jackett
+
+  transmission:
+    image: lscr.io/linuxserver/transmission:latest
+    container_name: lampa-transmission
+    restart: unless-stopped
+    environment:
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      TZ: "${TZ:-Europe/Kyiv}"
+    ports:
+      - "${TRANSMISSION_PORT:-9091}:9091"
+      - "51413:51413"
+      - "51413:51413/udp"
+    volumes:
+      - transmission-config:/config
+      - "${DOWNLOADS_DIR:?вкажіть DOWNLOADS_DIR у .env}:/downloads"
+      - "${MEDIA_DIR:?вкажіть MEDIA_DIR у .env}:/media"
+
+  jackett:
+    image: lscr.io/linuxserver/jackett:latest
+    container_name: lampa-jackett
+    restart: unless-stopped
+    environment:
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      TZ: "${TZ:-Europe/Kyiv}"
+    ports:
+      - "${JACKETT_PORT:-9117}:9117"
+    volumes:
+      - jackett-config:/config
+
+  # Необовʼязково: миттєвий перегляд без завантаження.
+  #   docker compose --profile stream up -d
+  torrserver:
+    image: ghcr.io/yourok/torrserver:latest
+    container_name: lampa-torrserver
+    restart: unless-stopped
+    profiles: ["stream"]
+    ports:
+      - "${TORRSERVER_PORT:-8090}:8090"
+    volumes:
+      - torrserver-config:/opt/ts/config
+      - "${DOWNLOADS_DIR}:/opt/ts/torrents"
+
+volumes:
+  bridge-config:
+  transmission-config:
+  jackett-config:
+  torrserver-config:

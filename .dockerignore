@@ -1,0 +1,5 @@
+# у контекст збірки має потрапити лише міст
+*
+!bridge/server.js
+!bridge/config.example.json
+!docker-entrypoint.sh

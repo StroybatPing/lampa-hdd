@@ -12,7 +12,7 @@
    * Підключення: Налаштування → Розширення → додати URL цього файлу.
    */
 
-  var VERSION = '1.1.0';
+  var VERSION = '1.2.0';
 
   var PORT = 8091;
   var found = '';
@@ -64,6 +64,13 @@
     return list;
   }
 
+  /** Ключ доступу до мосту (щоб чужа сторінка не могла нічого підкинути). */
+  function withToken(url) {
+    var token = storage('hdd_token', '');
+    if (!token) return url;
+    return url + (url.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(token);
+  }
+
   function ping(base) {
     return new Promise(function (resolve, reject) {
       var done = false;
@@ -74,7 +81,7 @@
         }
       }, 4000);
 
-      fetch(base + '/health')
+      fetch(withToken(base + '/health'))
         .then(function (r) {
           return r.json();
         })
@@ -137,7 +144,7 @@
   function api(path, options) {
     return bridge()
       .then(function (base) {
-        return fetch(base + path, options);
+        return fetch(withToken(base + path), options);
       })
       .then(function (r) {
         return r.json();
@@ -317,6 +324,15 @@
       field: {
         name: 'Адреса мосту',
         description: 'Порожньо — шукати автоматично серед: ' + candidates().join(', ')
+      }
+    });
+
+    Lampa.SettingsApi.addParam({
+      component: 'hdd',
+      param: { name: 'hdd_token', type: 'input', values: '', default: '' },
+      field: {
+        name: 'Ключ доступу',
+        description: 'Той самий, що в конфізі мосту (поле token). Порожньо — міст без ключа'
       }
     });
 

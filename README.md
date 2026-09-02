@@ -36,16 +36,48 @@ Lampa вміє **дивитися** торенти через TorrServer, але
 
 ## Встановлення
 
+### Docker — увесь серверний бік однією командою
+
+Піднімає міст, Transmission і Jackett; TorrServer — за бажанням.
+
 ```bash
-git clone https://github.com/<user>/lampa-hdd.git
+git clone https://github.com/StroybatPing/lampa-hdd.git
 cd lampa-hdd
+cp .env.example .env
+openssl rand -hex 16          # згенерований рядок вписати як LAMPA_TOKEN
+$EDITOR .env                  # ключ, шляхи до тек, PUID/PGID
+docker compose up -d
+```
+
+Далі відкрити Jackett на `http://<сервер>:9117`, додати свої трекери,
+скопіювати **API Key** у `.env` і перезапустити міст:
+
+```bash
+docker compose up -d bridge
+```
+
+TorrServer (миттєвий перегляд без завантаження) вмикається окремим профілем:
+
+```bash
+docker compose --profile stream up -d
+```
+
+### Без Docker
+
+Міст не має залежностей — потрібен лише Node 18+:
+
+```bash
 cp bridge/config.example.json bridge/config.json
-$EDITOR bridge/config.json      # шляхи, ключ Jackett, ключ Jellyfin
+$EDITOR bridge/config.json      # ключ, шляхи, ключ Jackett
 node bridge/server.js
 ```
 
-`install.sh` робить те саме плюс качає TorrServer і Jackett та реєструє
-launchd-агенти на macOS:
+Transmission і Jackett у цьому разі ставляться окремо, як вам зручно.
+
+### macOS
+
+`install.sh` качає TorrServer і Jackett, збирає конфіг і реєструє
+launchd-агенти, щоб усе піднімалося при вході:
 
 ```bash
 ./install.sh
@@ -91,6 +123,18 @@ jsDelivr, власний домен), а не з локального веб-с�
 запамʼятовує той, що відповів. Адресу можна задати вручну:
 **Налаштування → Зберегти на HDD → Адреса мосту**.
 
+## Ключ доступу — не пропускайте цей крок
+
+Міст мусить віддавати `Access-Control-Allow-Origin: *`, бо Lampa відкрита на
+чужому домені. Без ключа це означає, що **будь-яка сторінка у вашому браузері**
+може підкинути торент у ваш Transmission, і будь-хто у вашій мережі теж.
+
+Тому задайте `token` (у `.env` як `LAMPA_TOKEN` або в `bridge/config.json`) і
+впишіть той самий рядок у Lampa: **Налаштування → Зберегти на HDD → Ключ
+доступу**. Плагін додає його до кожного запиту; без ключа міст відповідає 401.
+
+Порожній `token` лишає міст відкритим — при старті він про це попереджає в лог.
+
 ## API мосту
 
 | Метод | Маршрут | Що робить |
@@ -102,6 +146,7 @@ jsDelivr, власний домен), а не з локального веб-с�
 | POST | `/publish` | примусово перенести готові в медіатеку |
 
 `kind` — `movie` або `series`, від нього залежить тека призначення.
+Ключ передається як `?token=…` або заголовком `X-Lampa-Token`.
 
 ## Конфігурація
 
@@ -110,6 +155,8 @@ jsDelivr, власний домен), а не з локального веб-с�
 | Поле | Призначення |
 |---|---|
 | `port` | порт мосту, типово 8091 |
+| `bind` | інтерфейс, типово `0.0.0.0` (для телевізорів потрібна мережа) |
+| `token` | ключ доступу; порожньо — міст відкритий |
 | `transmissionRpc` | адреса RPC Transmission |
 | `downloadDir` | куди качати (тимчасова тека роздач) |
 | `library.movie` / `library.series` | куди переносити готове |
