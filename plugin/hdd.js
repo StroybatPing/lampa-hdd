@@ -29,6 +29,24 @@
     return 'http://' + location.hostname + ':8091';
   })();
 
+  /**
+   * Збірки на кшталт LampaUA ховають підпис у другорядних кнопках
+   * (span{display:none}), і кнопка виглядає як безіменна іконка. Повертаємо
+   * підпис саме нашій кнопці, не чіпаючи решту.
+   */
+  function injectStyle() {
+    if (document.getElementById('hdd-style')) return;
+    var css =
+      '.full-start__button.view--hdd{width:auto!important;padding:0 1.4em!important;' +
+      'display:inline-flex!important;align-items:center}' +
+      '.full-start__button.view--hdd span{display:inline-block!important;' +
+      'margin-left:.6em;font-size:1.1em;white-space:nowrap}';
+    var style = document.createElement('style');
+    style.id = 'hdd-style';
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
   function noty(text) {
     if (window.Lampa && Lampa.Noty) Lampa.Noty.show(text);
   }
@@ -156,13 +174,16 @@
   function addButton(e) {
     var render = e.object.activity.render();
     if (render.find('.view--hdd').length) return;
+    injectStyle();
 
     var button = $(
       '<div class="full-start__button selector view--hdd">' +
+        // стрілка вниз у диск — «завантажити до себе»
         '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-        '<rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/>' +
-        '<circle cx="17" cy="12" r="2" fill="currentColor"/>' +
-        '<path d="M6 9h6M6 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+        '<path d="M12 3v9m0 0 3.5-3.5M12 12 8.5 8.5" stroke="currentColor" stroke-width="2" ' +
+        'stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<rect x="3" y="15" width="18" height="6" rx="2" stroke="currentColor" stroke-width="2"/>' +
+        '<circle cx="17.5" cy="18" r="1.1" fill="currentColor"/>' +
         '</svg>' +
         '<span>Зберегти на HDD</span>' +
         '</div>'
