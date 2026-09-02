@@ -12,7 +12,7 @@
    * Підключення: Налаштування → Розширення → додати URL цього файлу.
    */
 
-  var VERSION = '1.4.0';
+  var VERSION = '1.5.0';
 
   var PORT = 8091;
   var found = '';
@@ -21,8 +21,8 @@
     return window.Lampa && Lampa.Storage ? Lampa.Storage.get(key, def) : def;
   }
 
-  /** Хост, з якого завантажився сам плагін. */
-  function scriptHost() {
+  /** Адреса, з якої завантажився сам плагін. */
+  function scriptSrc() {
     var src = (document.currentScript && document.currentScript.src) || '';
     if (!src) {
       // Lampa вантажить плагіни доданим <script>, і currentScript у момент
@@ -30,13 +30,27 @@
       var tags = document.querySelectorAll('script[src*="hdd.js"]');
       if (tags.length) src = tags[tags.length - 1].src;
     }
+    return src;
+  }
+
+  function scriptHost() {
     try {
       var a = document.createElement('a');
-      a.href = src;
+      a.href = scriptSrc();
       return a.hostname || '';
     } catch (e) {
       return '';
     }
+  }
+
+  /**
+   * Ключ можна не вбивати в поле пультом, а дописати прямо в адресу плагіна:
+   *   …/hdd.js?token=xxxx
+   * Тоді встановлення й ключ — одна дія.
+   */
+  function tokenFromSrc() {
+    var m = /[?&]token=([^&]+)/.exec(scriptSrc());
+    return m ? decodeURIComponent(m[1]) : '';
   }
 
   /**
@@ -72,7 +86,7 @@
 
   /** Ключ доступу до мосту (щоб чужа сторінка не могла нічого підкинути). */
   function withToken(url) {
-    var token = storage('hdd_token', '');
+    var token = storage('hdd_token', '') || tokenFromSrc();
     if (!token) return url;
     return url + (url.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(token);
   }
@@ -350,7 +364,10 @@
       param: { name: 'hdd_token', type: 'input', values: '', default: '' },
       field: {
         name: 'Ключ доступу',
-        description: 'Той самий, що в конфізі мосту (поле token). Порожньо — міст без ключа'
+        description:
+          'Той самий, що в конфізі мосту. Можна не вписувати сюди, а дописати ' +
+          'в адресу плагіна: …/hdd.js?token=… ' +
+          (tokenFromSrc() ? '(зараз узятий з адреси)' : '')
       }
     });
 
