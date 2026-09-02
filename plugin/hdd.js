@@ -12,22 +12,105 @@
    * Підключення: Налаштування → Розширення → додати URL цього файлу.
    */
 
-  var BRIDGE = (function () {
-    // Міст живе на тому ж хості, що й цей плагін, на порту 8091.
+  var VERSION = '1.1.0';
+
+  var PORT = 8091;
+  var found = '';
+
+  function storage(key, def) {
+    return window.Lampa && Lampa.Storage ? Lampa.Storage.get(key, def) : def;
+  }
+
+  /** Хост, з якого завантажився сам плагін. */
+  function scriptHost() {
     var src = (document.currentScript && document.currentScript.src) || '';
     if (!src) {
-      // Lampa вантажить плагіни через додавання <script>, і currentScript у
-      // момент виконання може бути порожній — тоді шукаємо себе в DOM.
+      // Lampa вантажить плагіни доданим <script>, і currentScript у момент
+      // виконання буває порожній — тоді шукаємо себе в DOM.
       var tags = document.querySelectorAll('script[src*="hdd.js"]');
       if (tags.length) src = tags[tags.length - 1].src;
     }
     try {
       var a = document.createElement('a');
-      a.href = src || location.href;
-      if (a.hostname) return 'http://' + a.hostname + ':8091';
-    } catch (e) {}
-    return 'http://' + location.hostname + ':8091';
-  })();
+      a.href = src;
+      return a.hostname || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /**
+   * Плагін віддається по https (інакше Lampa не дасть його встановити), а міст
+   * живе в локальній мережі по http. Тому адресу мосту не можна вивести з
+   * адреси плагіна — її шукаємо перебором:
+   *   1. те, що вписали в Налаштуваннях;
+   *   2. знайдене раніше;
+   *   3. 127.0.0.1 — коли Lampa відкрита на тому ж компʼютері, що й міст
+   *      (Chrome вважає loopback довіреним і не ріже його як mixed content);
+   *   4. хост, звідки прийшов плагін, і хост самої сторінки.
+   */
+  function candidates() {
+    var list = [];
+    var add = function (url) {
+      if (url && list.indexOf(url) === -1) list.push(url.replace(/\/+$/, ''));
+    };
+
+    add(storage('hdd_bridge', ''));
+    add(found);
+    add('http://127.0.0.1:' + PORT);
+    var host = scriptHost();
+    if (host && host !== 'localhost' && host !== '127.0.0.1') add('http://' + host + ':' + PORT);
+    if (location.hostname) add('http://' + location.hostname + ':' + PORT);
+    return list;
+  }
+
+  function ping(base) {
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      var timer = setTimeout(function () {
+        if (!done) {
+          done = true;
+          reject(new Error('таймаут'));
+        }
+      }, 4000);
+
+      fetch(base + '/health')
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (j) {
+          clearTimeout(timer);
+          if (done) return;
+          done = true;
+          j && j.ok ? resolve(base) : reject(new Error('не міст'));
+        })
+        .catch(function (e) {
+          clearTimeout(timer);
+          if (done) return;
+          done = true;
+          reject(e);
+        });
+    });
+  }
+
+  /** Перший кандидат, що відповів. Знайдене запамʼятовуємо на сесію. */
+  function bridge() {
+    if (found) return Promise.resolve(found);
+
+    var list = candidates();
+    var chain = Promise.reject(new Error('порожньо'));
+    list.forEach(function (base) {
+      chain = chain.catch(function () {
+        return ping(base);
+      });
+    });
+
+    return chain.then(function (base) {
+      found = base;
+      console.log('[hdd] міст знайдено:', base);
+      return base;
+    });
+  }
 
   /**
    * Збірки на кшталт LampaUA ховають підпис у другорядних кнопках
@@ -52,9 +135,13 @@
   }
 
   function api(path, options) {
-    return fetch(BRIDGE + path, options).then(function (r) {
-      return r.json();
-    });
+    return bridge()
+      .then(function (base) {
+        return fetch(base + path, options);
+      })
+      .then(function (r) {
+        return r.json();
+      });
   }
 
   function sizeLabel(item) {
@@ -207,7 +294,66 @@
     else render.find('.view--torrent').after(button);
   }
 
+  var ICON =
+    '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+    '<path d="M12 3v9m0 0 3.5-3.5M12 12 8.5 8.5" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<rect x="3" y="15" width="18" height="6" rx="2" stroke="currentColor" stroke-width="2"/>' +
+    '<circle cx="17.5" cy="18" r="1.1" fill="currentColor"/></svg>';
+
+  /** Власний розділ у Налаштуваннях: адреса мосту й перевірка звʼязку. */
+  function addSettings() {
+    if (!window.Lampa || !Lampa.SettingsApi) return;
+
+    Lampa.SettingsApi.addComponent({
+      component: 'hdd',
+      name: 'Зберегти на HDD',
+      icon: ICON
+    });
+
+    Lampa.SettingsApi.addParam({
+      component: 'hdd',
+      param: { name: 'hdd_bridge', type: 'input', values: '', default: '' },
+      field: {
+        name: 'Адреса мосту',
+        description: 'Порожньо — шукати автоматично серед: ' + candidates().join(', ')
+      }
+    });
+
+    Lampa.SettingsApi.addParam({
+      component: 'hdd',
+      param: { name: 'hdd_check', type: 'button' },
+      field: { name: 'Перевірити звʼязок', description: 'Запитати міст і показати відповідь' },
+      onChange: function () {
+        noty('Шукаю міст: ' + candidates().join(', '));
+        api('/health')
+          .then(function (r) {
+            noty(
+              r.ok
+                ? 'Міст працює: ' + found + ' · Transmission ' + r.transmission
+                : 'Міст відповів помилкою: ' + r.error
+            );
+          })
+          .catch(function (e) {
+            noty('Міст недоступний: ' + e.message);
+          });
+      }
+    });
+  }
+
   function start() {
+    addSettings();
+
+    if (Lampa.Manifest) {
+      Lampa.Manifest.plugins = {
+        type: 'other',
+        version: VERSION,
+        name: 'Зберегти на HDD',
+        description: 'Завантаження знайденої роздачі на власний диск через Transmission',
+        component: 'hdd'
+      };
+    }
+
     Lampa.Listener.follow('full', function (e) {
       if (e.type === 'complite') {
         try {
@@ -218,7 +364,7 @@
       }
     });
     window.__hdd_ready = true;
-    console.log('[hdd] плагін готовий, міст:', BRIDGE);
+    console.log('[hdd] плагін ' + VERSION + ' готовий, кандидати:', candidates().join(', '));
   }
 
   if (window.Lampa && Lampa.Listener) start();
