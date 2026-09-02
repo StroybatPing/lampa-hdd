@@ -12,7 +12,7 @@
    * Підключення: Налаштування → Розширення → додати URL цього файлу.
    */
 
-  var VERSION = '1.3.0';
+  var VERSION = '1.4.0';
 
   var PORT = 8091;
   var found = '';
@@ -89,6 +89,7 @@
 
       fetch(withToken(base + '/health'))
         .then(function (r) {
+          if (r.status === 401) throw new Error('невірний ключ доступу');
           return r.json();
         })
         .then(function (j) {

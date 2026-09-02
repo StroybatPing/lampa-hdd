@@ -212,8 +212,11 @@ function send(res, code, data) {
   res.writeHead(code, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Lampa-Token',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    // Chrome (Private Network Access) блокує запит зі https-сторінки до
+    // локальної мережі, доки сервер явно не дозволить його цим заголовком.
+    'Access-Control-Allow-Private-Network': 'true',
     'Content-Length': Buffer.byteLength(body)
   });
   res.end(body);
@@ -252,7 +255,7 @@ function authorized(req, url) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
-  if (req.method === 'OPTIONS') return send(res, 204, {});
+  if (req.method === 'OPTIONS') return send(res, 204, {});   // preflight: заголовки вище
 
   if (!authorized(req, url)) {
     log('відмова без ключа:', url.pathname);
