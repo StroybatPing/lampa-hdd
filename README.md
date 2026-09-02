@@ -87,7 +87,7 @@ launchd-агенти, щоб усе піднімалося при вході:
 має бути https, якщо сама Lampa відкрита по https (див. розділ нижче):
 
 ```
-https://cdn.jsdelivr.net/gh/<user>/lampa-hdd@main/plugin/hdd.js
+https://cdn.jsdelivr.net/gh/StroybatPing/lampa-hdd@main/plugin/hdd.js
 ```
 
 Якщо Lampa відкрита по http (власний локальний хостинг збірки) — годиться й
