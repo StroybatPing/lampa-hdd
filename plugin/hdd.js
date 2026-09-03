@@ -12,7 +12,7 @@
    * Підключення: Налаштування → Розширення → додати URL цього файлу.
    */
 
-  var VERSION = '1.6.1';
+  var VERSION = '1.6.2';
 
   var PORT = 8091;
   var found = '';
@@ -317,10 +317,15 @@
   function showFilters(all, info) {
     Lampa.Select.show({
       title: 'Фільтри',
-      items: FILTERS.map(function (f) {
-        return { title: f.name, subtitle: filterTitle(f), filter: f };
-      }).concat([{ title: 'Скинути все', reset: true }]),
+      items: [{ title: '← Назад до списку', back: true }]
+        .concat(
+          FILTERS.map(function (f) {
+            return { title: f.name, subtitle: filterTitle(f), filter: f };
+          })
+        )
+        .concat([{ title: 'Скинути все', reset: true }]),
       onSelect: function (item) {
+        if (item.back) return showList(all, info);
         if (item.reset) {
           FILTERS.forEach(function (f) {
             Lampa.Storage.set(f.key, f.key === 'hdd_sort' ? 'seeders' : 'all');
@@ -331,13 +336,16 @@
         var f = item.filter;
         Lampa.Select.show({
           title: f.name,
-          items: f.options.map(function (o) {
-            return {
-              title: (o.value === filterValue(f.key) ? '✓ ' : '') + o.title,
-              value: o.value
-            };
-          }),
+          items: [{ title: '← Назад до фільтрів', back: true }].concat(
+            f.options.map(function (o) {
+              return {
+                title: (o.value === filterValue(f.key) ? '✓ ' : '') + o.title,
+                value: o.value
+              };
+            })
+          ),
           onSelect: function (opt) {
+            if (opt.back) return showFilters(all, info);
             Lampa.Storage.set(f.key, opt.value);
             showList(all, info);
           },
@@ -359,7 +367,8 @@
       return { title: r.title, subtitle: releaseLabel(r), release: r };
     });
 
-    items.unshift({
+    items.unshift({ title: '← Закрити', close: true });
+    items.splice(1, 0, {
       title: '⚙ Фільтри',
       subtitle:
         FILTERS.map(function (f) {
@@ -377,6 +386,7 @@
       title: 'Зберегти на HDD — ' + (info.local || info.original),
       items: items,
       onSelect: function (item) {
+        if (item.close) return Lampa.Controller.toggle('full_start');
         if (item.filters) return showFilters(all, info);
         if (item.empty) return showList(all, info);
 
@@ -475,7 +485,13 @@
           };
         });
         if (!items.length) items = [{ title: 'Немає активних завантажень' }];
-        Lampa.Select.show({ title: 'Завантаження на HDD', items: items, onSelect: function () {}, onBack: function () {} });
+        items.unshift({ title: '← Закрити', close: true });
+        Lampa.Select.show({
+          title: 'Завантаження на HDD',
+          items: items,
+          onSelect: function () {},
+          onBack: function () {}
+        });
       })
       .catch(function (e) {
         noty('Міст недоступний: ' + e.message);
