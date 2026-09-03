@@ -12,7 +12,7 @@
    * Підключення: Налаштування → Розширення → додати URL цього файлу.
    */
 
-  var VERSION = '1.5.0';
+  var VERSION = '1.6.0';
 
   var PORT = 8091;
   var found = '';
@@ -183,64 +183,198 @@
       });
   }
 
-  function sizeLabel(item) {
-    return item.sizeGb + ' ГБ · ' + item.seeders + ' сідерів · ' + item.tracker;
+  var LANGS = { ukr: 'укр', rus: 'рос', eng: 'eng' };
+
+  var FILTERS = [
+    {
+      key: 'hdd_f_quality',
+      name: 'Якість',
+      options: [
+        { value: 'all', title: 'Будь-яка' },
+        { value: '2160p', title: '4K · 2160p' },
+        { value: '1080p', title: '1080p' },
+        { value: '720p', title: '720p' }
+      ]
+    },
+    {
+      key: 'hdd_f_lang',
+      name: 'Мова',
+      options: [
+        { value: 'all', title: 'Будь-яка' },
+        { value: 'ukr', title: 'Українська' },
+        { value: 'rus', title: 'Російська' },
+        { value: 'eng', title: 'Оригінал / англійська' }
+      ]
+    },
+    {
+      key: 'hdd_f_source',
+      name: 'Джерело',
+      options: [
+        { value: 'all', title: 'Будь-яке' },
+        { value: 'Remux', title: 'Remux — без стиснення' },
+        { value: 'BDRip', title: 'BDRip' },
+        { value: 'WEB-DL', title: 'WEB-DL' }
+      ]
+    },
+    {
+      key: 'hdd_sort',
+      name: 'Сортування',
+      options: [
+        { value: 'seeders', title: 'За сідерами' },
+        { value: 'size_desc', title: 'За розміром: більші вгорі' },
+        { value: 'size_asc', title: 'За розміром: менші вгорі' }
+      ]
+    }
+  ];
+
+  function filterValue(key) {
+    return storage(key, key === 'hdd_sort' ? 'seeders' : 'all');
   }
 
-  function cardInfo(movie) {
-    var isSeries = !!(movie.name || movie.first_air_date || movie.number_of_seasons);
-    return {
-      kind: isSeries ? 'series' : 'movie',
-      original: movie.original_title || movie.original_name || '',
-      local: movie.title || movie.name || '',
-      year: String(movie.release_date || movie.first_air_date || '').slice(0, 4)
-    };
+  function filterTitle(f) {
+    var value = filterValue(f.key);
+    for (var i = 0; i < f.options.length; i++) {
+      if (f.options[i].value === value) return f.options[i].title;
+    }
+    return value;
   }
 
-  /** Пошук: спершу оригінальною назвою (трекери індексують саме її), потім локальною. */
-  function findReleases(info) {
-    var q = function (title) {
-      return api(
-        '/search?title=' +
-          encodeURIComponent(title) +
-          '&year=' +
-          encodeURIComponent(info.year) +
-          '&kind=' +
-          info.kind
+  /** Рядок під назвою релізу: усе, за чим обирають. */
+  function releaseLabel(r) {
+    var parts = [];
+    if (r.quality) parts.push(r.quality);
+    if (r.source) parts.push(r.source);
+    parts.push(r.sizeGb + ' ГБ');
+    parts.push(r.seeders + ' сід · ' + r.peers + ' пір');
+    if (r.langs && r.langs.length) {
+      parts.push(
+        r.langs
+          .map(function (l) {
+            return LANGS[l] || l;
+          })
+          .join('/')
       );
-    };
+    }
+    parts.push(r.tracker);
+    return parts.join(' · ');
+  }
 
-    return q(info.original || info.local).then(function (res) {
-      if (res.ok && res.results.length) return res.results;
-      if (!info.original || info.original === info.local) return [];
-      return q(info.local).then(function (r2) {
-        return r2.ok ? r2.results : [];
-      });
+  function applyFilters(list) {
+    var q = filterValue('hdd_f_quality');
+    var lang = filterValue('hdd_f_lang');
+    var src = filterValue('hdd_f_source');
+    var sort = filterValue('hdd_sort');
+
+    var out = list.filter(function (r) {
+      if (q !== 'all' && r.quality !== q) return false;
+      if (src !== 'all' && r.source !== src) return false;
+      if (lang !== 'all' && (r.langs || []).indexOf(lang) === -1) return false;
+      return true;
+    });
+
+    out.sort(function (a, b) {
+      if (sort === 'size_desc') return b.size - a.size;
+      if (sort === 'size_asc') return a.size - b.size;
+      return b.seeders - a.seeders;
+    });
+
+    return out;
+  }
+
+  /** Меню фільтрів; після зміни одразу перемальовуємо список. */
+  function showFilters(all, info) {
+    Lampa.Select.show({
+      title: 'Фільтри',
+      items: FILTERS.map(function (f) {
+        return { title: f.name, subtitle: filterTitle(f), filter: f };
+      }).concat([{ title: 'Скинути все', reset: true }]),
+      onSelect: function (item) {
+        if (item.reset) {
+          FILTERS.forEach(function (f) {
+            Lampa.Storage.set(f.key, f.key === 'hdd_sort' ? 'seeders' : 'all');
+          });
+          return showList(all, info);
+        }
+
+        var f = item.filter;
+        Lampa.Select.show({
+          title: f.name,
+          items: f.options.map(function (o) {
+            return {
+              title: (o.value === filterValue(f.key) ? '✓ ' : '') + o.title,
+              value: o.value
+            };
+          }),
+          onSelect: function (opt) {
+            Lampa.Storage.set(f.key, opt.value);
+            showList(all, info);
+          },
+          onBack: function () {
+            showFilters(all, info);
+          }
+        });
+      },
+      onBack: function () {
+        showList(all, info);
+      }
     });
   }
 
-  function showStatus() {
-    api('/status').then(function (res) {
-      var items = (res.torrents || []).map(function (t) {
-        return {
-          title: t.title || t.name,
-          subtitle:
-            t.percent + '%' +
-            (t.published ? ' · у медіатеці' : t.percent >= 100 ? ' · переношу' : ' · качається')
-        };
-      });
-      if (!items.length) items = [{ title: 'Немає активних завантажень', subtitle: '' }];
+  function showList(all, info) {
+    var list = applyFilters(all);
 
-      Lampa.Select.show({
-        title: 'Завантаження на HDD',
-        items: items,
-        onSelect: function () {
-          Lampa.Controller.toggle('full_start');
-        },
-        onBack: function () {
-          Lampa.Controller.toggle('full_start');
-        }
-      });
+    var items = list.map(function (r) {
+      return { title: r.title, subtitle: releaseLabel(r), release: r };
+    });
+
+    items.unshift({
+      title: '⚙ Фільтри',
+      subtitle:
+        FILTERS.map(function (f) {
+          return f.name + ': ' + filterTitle(f);
+        }).join(' · ') +
+        '  (показано ' + list.length + ' з ' + all.length + ')',
+      filters: true
+    });
+
+    if (!list.length) {
+      items.push({ title: 'Під ці фільтри нічого не підходить', empty: true });
+    }
+
+    Lampa.Select.show({
+      title: 'Зберегти на HDD — ' + (info.local || info.original),
+      items: items,
+      onSelect: function (item) {
+        if (item.filters) return showFilters(all, info);
+        if (item.empty) return showList(all, info);
+
+        noty('Ставлю в чергу…');
+        api('/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            link: item.release.link,
+            title: info.local || info.original,
+            kind: info.kind
+          })
+        })
+          .then(function (res) {
+            if (!res.ok) return noty('Помилка: ' + res.error);
+            noty(
+              res.torrent.duplicate
+                ? 'Уже качається: ' + res.torrent.name
+                : 'Качається на HDD: ' + res.torrent.name
+            );
+          })
+          .catch(function (e) {
+            noty('Міст недоступний: ' + e.message);
+          });
+
+        Lampa.Controller.toggle('full_start');
+      },
+      onBack: function () {
+        Lampa.Controller.toggle('full_start');
+      }
     });
   }
 
@@ -251,86 +385,11 @@
     findReleases(info)
       .then(function (list) {
         if (!list.length) return noty('Нічого не знайшлось у ваших трекерах');
-
-        var items = list.map(function (r) {
-          return { title: r.title, subtitle: sizeLabel(r), release: r };
-        });
-        items.unshift({ title: '▸ Стан завантажень', subtitle: '', status: true });
-
-        Lampa.Select.show({
-          title: 'Зберегти на HDD — ' + (info.local || info.original),
-          items: items,
-          onSelect: function (item) {
-            if (item.status) return showStatus();
-
-            noty('Ставлю в чергу…');
-            api('/save', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                link: item.release.link,
-                title: info.local || info.original,
-                kind: info.kind
-              })
-            })
-              .then(function (res) {
-                if (!res.ok) return noty('Помилка: ' + res.error);
-                noty(
-                  res.torrent.duplicate
-                    ? 'Уже качається: ' + res.torrent.name
-                    : 'Качається на HDD: ' + res.torrent.name
-                );
-              })
-              .catch(function (e) {
-                noty('Міст недоступний: ' + e.message);
-              });
-
-            Lampa.Controller.toggle('full_start');
-          },
-          onBack: function () {
-            Lampa.Controller.toggle('full_start');
-          }
-        });
+        showList(list, info);
       })
       .catch(function (e) {
         noty('Міст недоступний: ' + e.message);
       });
-  }
-
-  function addButton(e) {
-    var render = e.object.activity.render();
-    if (render.find('.view--hdd').length) return;
-    injectStyle();
-
-    var button = $(
-      '<div class="full-start__button selector view--hdd">' +
-        // стрілка вниз у диск — «завантажити до себе»
-        '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-        '<path d="M12 3v9m0 0 3.5-3.5M12 12 8.5 8.5" stroke="currentColor" stroke-width="2" ' +
-        'stroke-linecap="round" stroke-linejoin="round"/>' +
-        '<rect x="3" y="15" width="18" height="6" rx="2" stroke="currentColor" stroke-width="2"/>' +
-        '<circle cx="17.5" cy="18" r="1.1" fill="currentColor"/>' +
-        '</svg>' +
-        '<span>Зберегти на HDD</span>' +
-        '</div>'
-    );
-
-    button.on('hover:enter', function () {
-      onPress(e.data.movie);
-    });
-
-    // Класти поруч із «Торренти» не можна: у збірці LampaUA другорядні кнопки
-    // лежать у .buttons--container з класом hide, і кнопка виходить нульового
-    // розміру. Шукаємо перший ВИДИМИЙ контейнер кнопок.
-    var container = render
-      .find('.full-start-new__buttons, .full-start__buttons, .buttons--container')
-      .filter(function () {
-        return !$(this).hasClass('hide');
-      })
-      .first();
-
-    if (container.length) container.append(button);
-    else render.find('.view--torrent').after(button);
   }
 
   var ICON =
@@ -340,7 +399,31 @@
     '<rect x="3" y="15" width="18" height="6" rx="2" stroke="currentColor" stroke-width="2"/>' +
     '<circle cx="17.5" cy="18" r="1.1" fill="currentColor"/></svg>';
 
-  /** Власний розділ у Налаштуваннях: адреса мосту й перевірка звʼязку. */
+  /** Список того, що зараз качається. Викликається з Налаштувань. */
+  function showStatus() {
+    api('/status')
+      .then(function (res) {
+        var items = (res.torrents || []).map(function (t) {
+          return {
+            title: t.title || t.name,
+            subtitle:
+              t.percent + '%' +
+              (t.published
+                ? ' · у медіатеці'
+                : t.percent >= 100
+                ? ' · переношу'
+                : ' · качається, ' + Math.round((t.speed || 0) / 104858) / 10 + ' МБ/с')
+          };
+        });
+        if (!items.length) items = [{ title: 'Немає активних завантажень' }];
+        Lampa.Select.show({ title: 'Завантаження на HDD', items: items, onSelect: function () {}, onBack: function () {} });
+      })
+      .catch(function (e) {
+        noty('Міст недоступний: ' + e.message);
+      });
+  }
+
+  /** Власний розділ у Налаштуваннях: адреса мосту, ключ, стан і перевірка звʼязку. */
   function addSettings() {
     if (!window.Lampa || !Lampa.SettingsApi) return;
 
@@ -369,6 +452,13 @@
           'в адресу плагіна: …/hdd.js?token=… ' +
           (tokenFromSrc() ? '(зараз узятий з адреси)' : '')
       }
+    });
+
+    Lampa.SettingsApi.addParam({
+      component: 'hdd',
+      param: { name: 'hdd_status', type: 'button' },
+      field: { name: 'Стан завантажень', description: 'Що зараз качається і що вже в медіатеці' },
+      onChange: showStatus
     });
 
     Lampa.SettingsApi.addParam({

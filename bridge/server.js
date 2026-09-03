@@ -123,19 +123,58 @@ async function search({ title, year, kind }) {
   return (data.Results || [])
     .filter((r) => r.Size >= MIN && r.Size <= MAX && (r.Seeders || 0) > 0)
     .filter((r) => r.MagnetUri || r.Link)
-    .map((r) => ({
-      title: (r.Title || '').replace(/\s+/g, ' ').trim(),
-      tracker: r.Tracker,
-      size: r.Size,
-      sizeGb: Math.round((r.Size / 1073741824) * 100) / 100,
-      seeders: r.Seeders || 0,
-      link: r.MagnetUri || r.Link,
-      // рік у назві — не фільтр, а підйом у сортуванні: назви бувають без року
-      hitsYear: year ? String(r.Title || '').includes(String(year)) : false,
-      kind: kind || 'movie'
-    }))
+    .map((r) => {
+      const name = (r.Title || '').replace(/\s+/g, ' ').trim();
+      return {
+        title: name,
+        tracker: r.Tracker,
+        size: r.Size,
+        sizeGb: Math.round((r.Size / 1073741824) * 100) / 100,
+        seeders: r.Seeders || 0,
+        peers: Math.max(0, (r.Peers || 0) - (r.Seeders || 0)),
+        quality: quality(name),
+        source: source(name),
+        langs: langs(name),
+        link: r.MagnetUri || r.Link,
+        // рік у назві — не фільтр, а підйом у сортуванні: назви бувають без року
+        hitsYear: year ? name.includes(String(year)) : false,
+        kind: kind || 'movie'
+      };
+    })
     .sort((a, b) => b.hitsYear - a.hitsYear || b.seeders - a.seeders)
-    .slice(0, 40);
+    .slice(0, 60);
+}
+
+/** Роздільність із назви релізу. */
+function quality(name) {
+  if (/2160p|\b4k\b|\buhd\b/i.test(name)) return '2160p';
+  if (/1080p|\bfhd\b/i.test(name)) return '1080p';
+  if (/720p|\bhd\b/i.test(name)) return '720p';
+  if (/\b(480p|dvdrip|sdtv)\b/i.test(name)) return '480p';
+  return '';
+}
+
+/** Джерело картинки — від нього залежить якість більше, ніж від роздільності. */
+function source(name) {
+  if (/remux/i.test(name)) return 'Remux';
+  if (/bdrip|blu-?ray/i.test(name)) return 'BDRip';
+  if (/web-?dl/i.test(name)) return 'WEB-DL';
+  if (/webrip/i.test(name)) return 'WEBRip';
+  if (/hdrip/i.test(name)) return 'HDRip';
+  if (/\b(ts|camrip|telesync)\b/i.test(name)) return 'Екранка';
+  return '';
+}
+
+/**
+ * Мови з назви. Це здогад за мітками релізерів, а не розбір самого файлу:
+ * трекери пишуть їх як заманеться, тож можливі й хиби.
+ */
+function langs(name) {
+  const out = [];
+  if (/\bukr\b|укр|українськ|hurtom|гуртом|toloka|\bua\b/i.test(name)) out.push('ukr');
+  if (/\brus\b|рус|дубляж|\b(mvo|avo|dvo|dub)\b|\|\s*d\s*(\||$)/i.test(name)) out.push('rus');
+  if (/\beng\b|original|англ/i.test(name)) out.push('eng');
+  return out;
 }
 
 /** Стан наглядуваних торентів. */
