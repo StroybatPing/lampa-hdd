@@ -13,6 +13,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 
 const ROOT = __dirname;
 const CFG_FILE = process.env.LAMPA_BRIDGE_CONFIG || path.join(ROOT, 'config.json');
@@ -41,9 +42,62 @@ function log(...args) {
   console.log(new Date().toISOString().replace('T', ' ').slice(0, 19), ...args);
 }
 
-/** Виклик Transmission RPC з обробкою рукостискання 409 (X-Transmission-Session-Id). */
-async function rpc(method, args, retry = true) {
-  const res = await fetch(CFG.transmissionRpc, {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Transmission можна закривати коли завгодно — міст підніме його сам, коли
+ * знадобиться. Без цього довелося б тримати застосунок вічно відкритим.
+ */
+async function wakeTransmission() {
+  if (CFG.autostart === false || process.platform !== 'darwin') return false;
+
+  const app = CFG.transmissionApp || 'Transmission';
+  log('Transmission не відповідає — запускаю', app);
+  await new Promise((resolve) => execFile('/usr/bin/open', ['-gj', '-a', app], () => resolve()));
+
+  // чекаємо, поки підніметься RPC (порожній запит дає 409 — цього досить)
+  for (let i = 0; i < 25; i++) {
+    await sleep(1000);
+    try {
+      await fetch(CFG.transmissionRpc, { method: 'POST', body: '{}' });
+      log('Transmission піднявся за', i + 1, 'с');
+      return true;
+    } catch (e) {
+      /* ще не слухає */
+    }
+  }
+  log('Transmission не піднявся за 25 с');
+  return false;
+}
+
+/**
+ * Виклик Transmission RPC з обробкою рукостискання 409.
+ * `wake` вмикає підйом закритого застосунку — його ставить тільки дія
+ * власника. Фоновий наглядач ходить із wake=false, інакше сам би й тримав
+ * Transmission вічно відкритим, скільки б його не закривали.
+ */
+async function rpc(method, args, retry = true, wake = true) {
+  let res;
+  try {
+    res = await callRpc(method, args);
+  } catch (e) {
+    if (!retry || !wake || !(await wakeTransmission())) throw e;
+    res = await callRpc(method, args);
+  }
+
+  if (res.status === 409 && retry) {
+    sessionId = res.headers.get('x-transmission-session-id') || '';
+    return rpc(method, args, false, wake);
+  }
+  if (!res.ok) throw new Error('Transmission HTTP ' + res.status);
+
+  const body = await res.json();
+  if (body.result !== 'success') throw new Error('Transmission: ' + body.result);
+  return body.arguments;
+}
+
+function callRpc(method, args) {
+  return fetch(CFG.transmissionRpc, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -51,16 +105,6 @@ async function rpc(method, args, retry = true) {
     },
     body: JSON.stringify({ method, arguments: args || {} })
   });
-
-  if (res.status === 409 && retry) {
-    sessionId = res.headers.get('x-transmission-session-id') || '';
-    return rpc(method, args, false);
-  }
-  if (!res.ok) throw new Error('Transmission HTTP ' + res.status);
-
-  const body = await res.json();
-  if (body.result !== 'success') throw new Error('Transmission: ' + body.result);
-  return body.arguments;
 }
 
 /** Додати торент і взяти його під нагляд. */
@@ -219,9 +263,17 @@ async function publishFinished() {
   const pending = Object.entries(state).filter(([, v]) => !v.published);
   if (!pending.length) return;
 
-  const { torrents } = await rpc('torrent-get', {
-    fields: ['id', 'hashString', 'name', 'percentDone', 'downloadDir']
-  });
+  let torrents;
+  try {
+    ({ torrents } = await rpc(
+      'torrent-get',
+      { fields: ['id', 'hashString', 'name', 'percentDone', 'downloadDir'] },
+      true,
+      false
+    ));
+  } catch (e) {
+    return; // Transmission закритий — це нормально, перенесемо коли відкриється
+  }
 
   let moved = 0;
   for (const t of torrents) {
