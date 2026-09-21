@@ -12,7 +12,7 @@
    * Підключення: Налаштування → Розширення → додати URL цього файлу.
    */
 
-  var VERSION = '1.6.2';
+  var VERSION = '1.7.0';
 
   var PORT = 8091;
   var found = '';
@@ -75,7 +75,7 @@
 
     // Хости, де мосту бути не може: плагін віддається з CDN, а сторінка — з
     // сайту збірки. Питати їх — це три зайві таймаути перед відповіддю.
-    var public_ = /(jsdelivr|githubusercontent|github\.io|unpkg|kinohub|lampa)/i;
+    var public_ = /(jsdelivr|githubusercontent|github\.io|workers\.dev|unpkg|kinohub|lampa)/i;
     [scriptHost(), location.hostname].forEach(function (host) {
       if (host && !public_.test(host) && host !== 'localhost' && host !== '127.0.0.1') {
         add('http://' + host + ':' + PORT);

@@ -1,0 +1,7 @@
+// Роздача плагіна з Cloudflare: постійна адреса без кешу jsDelivr.
+// Публікація: npm run publish-plugin
+{
+  "name": "lampa-hdd",
+  "compatibility_date": "2026-09-01",
+  "assets": { "directory": "./plugin" }
+}

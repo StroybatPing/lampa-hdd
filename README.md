@@ -87,8 +87,13 @@ launchd-агенти, щоб усе піднімалося при вході:
 має бути https, якщо сама Lampa відкрита по https (див. розділ нижче):
 
 ```
-https://cdn.jsdelivr.net/gh/StroybatPing/lampa-hdd@main/plugin/hdd.js
+https://lampa-hdd.belkin-alex.workers.dev/hdd.js
 ```
+
+Це Cloudflare Worker зі статикою з теки `plugin/` (`wrangler.jsonc`), без кешу
+(`plugin/_headers`), тож нова версія доходить одразу після `npm run publish-plugin`.
+jsDelivr (`cdn.jsdelivr.net/gh/StroybatPing/lampa-hdd@<тег>/plugin/hdd.js`) теж
+працює, але адреса `@main` годинами віддає стару версію — лише з тегом.
 
 Якщо Lampa відкрита по http (власний локальний хостинг збірки) — годиться й
 `http://<адреса-сервера>:8095/hdd.js`.
